@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/scrape-ra?secret=${RA2SPOTIFY_CRON_SECRET}",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}
