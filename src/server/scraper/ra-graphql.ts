@@ -11,8 +11,8 @@
 
 const RA_GQL = "https://ra.co/graphql";
 
-// Berlin area id confirmed via previous research
-export const BERLIN_AREA_ID = "34";
+// Berlin area id confirmed via introspection (Int, not String)
+export const BERLIN_AREA_ID = 34;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,14 +37,19 @@ export type RaEventDetail = {
   startTime: string;
   contentUrl: string;
   interestedCount: number;
-  description: string | null;
+  content: string | null; // RA calls it "content", not "description"
   images: Array<{ filename: string }>;
   venue: {
     name: string;
-    location: string | null;
+    address: string | null; // address is a plain string; location is GeoLocation {lat,lng}
   } | null;
   artists: RaArtist[];
-  tickets: Array<{ prices: Array<{ total: number; currency: string }> }>;
+  cost: string | null; // RA's cost field (StrippedHtml scalar)
+  tickets: Array<{
+    title: string | null;
+    priceRetail: string | null; // Decimal scalar comes as string
+    currency: { code: string } | null;
+  }>;
 };
 
 // ─── Internal GQL helper ──────────────────────────────────────────────────────
@@ -91,7 +96,7 @@ async function gqlRequest<T>(
 
 const EVENT_LISTINGS_QUERY = /* graphql */ `
   query ListingsByDate($filters: FilterInputDtoInput, $pageSize: Int, $page: Int) {
-    eventListings(filters: $filters, pageSize: $pageSize, page: $page, orderBy: { attending: DESC }) {
+    eventListings(filters: $filters, pageSize: $pageSize, page: $page) {
       data {
         id
         listingDate
@@ -196,15 +201,18 @@ const EVENT_DETAIL_QUERY = /* graphql */ `
       startTime
       contentUrl
       interestedCount
-      description
+      content
+      cost
       images { filename }
       venue {
         name
-        location
+        address
       }
       artists { name }
       tickets {
-        prices { total currency }
+        title
+        priceRetail
+        currency { code }
       }
     }
   }
@@ -227,16 +235,31 @@ export async function fetchEventDetail(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Derive a display price string from ticket data. */
+/** Derive a display price string from ticket data or the cost field. */
 export function extractPrice(
-  tickets: RaEventDetail["tickets"],
+  detail: Pick<RaEventDetail, "tickets" | "cost">,
 ): string | null {
-  if (!tickets?.length) return null;
-  const prices = tickets.flatMap((t) => t.prices ?? []);
-  if (!prices.length) return null;
-  const min = Math.min(...prices.map((p) => p.total));
-  const currency = prices[0]?.currency ?? "EUR";
-  return `${currency} ${(min / 100).toFixed(2)}`;
+  // Prefer structured ticket data
+  if (detail.tickets?.length) {
+    const priced = detail.tickets
+      .filter((t) => t.priceRetail != null)
+      .map((t) => ({
+        amount: parseFloat(t.priceRetail!),
+        currency: t.currency?.code ?? "EUR",
+      }))
+      .filter((p) => !isNaN(p.amount));
+
+    if (priced.length) {
+      const min = Math.min(...priced.map((p) => p.amount));
+      const currency = priced[0].currency;
+      return `${currency} ${min.toFixed(2)}`;
+    }
+  }
+
+  // Fallback to cost field (StrippedHtml scalar, e.g. "€10")
+  if (detail.cost) return detail.cost;
+
+  return null;
 }
 
 /** Source URL from a contentUrl like "/events/12345" */

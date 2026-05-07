@@ -66,11 +66,11 @@ export function buildPayload(detail: RaEventDetail): UpsertPayload {
     ra_event_id: detail.id,
     source_url: toSourceUrl(detail.contentUrl),
     title: detail.title ?? null,
-    description: detail.description ?? null,
+    description: detail.content ?? null, // RA field is "content"
     date_time: detail.startTime ?? null,
     venue: detail.venue?.name ?? null,
-    location: detail.venue?.location ?? null,
-    price: extractPrice(detail.tickets),
+    location: detail.venue?.address ?? null, // RA field is "address" (not location which is GeoLocation)
+    price: extractPrice(detail),
     interested_count: detail.interestedCount ?? null,
     lineup_json: lineup,
   };
