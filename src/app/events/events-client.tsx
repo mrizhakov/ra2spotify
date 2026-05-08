@@ -315,15 +315,7 @@ export function EventsPageClient() {
       
       setSelectedDate(null);
       setWeekendRange({ from: friKey, to: sunKey });
-      setSortOption("date"); // Ensure we are grouped by date to scroll
-      
-      setTimeout(() => {
-        const match = grouped.find((g) => g.date >= friKey && g.date <= sunKey);
-        if (match) {
-          const el = document.getElementById(`day-${match.date}`);
-          el?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 50);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     },
     [grouped],
   );
@@ -376,7 +368,6 @@ export function EventsPageClient() {
             >
               <option value="interested">Sort: Interested</option>
               <option value="price">Sort: Price</option>
-              <option value="date">Sort: Date</option>
             </select>
           </div>
 
