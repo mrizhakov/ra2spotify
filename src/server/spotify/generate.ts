@@ -10,8 +10,7 @@ import { logger } from "@/server/logging/logger";
 import { resolveArtists } from "./resolve";
 import { assignTiers, assemblePlaylist } from "./scoring";
 import {
-  getCurrentUser,
-  getTopTracks,
+  getArtistTracks,
   createPlaylist,
   addTracksToPlaylist,
   type SpotifyTrack,
@@ -128,14 +127,20 @@ export async function generatePlaylist(
     }
     log.info({ tiers }, "tier assignment complete");
 
-    // ── 7. Fetch top tracks ─────────────────────────────────────────────────
+    // ── 7. Fetch tracks for each artist (via search) ────────────────────────
     const topTracksByArtist = new Map<string, SpotifyTrack[]>();
 
     for (const artist of tiered) {
       if (!artist.spotifyArtistId || artist.trackAllocation === 0) continue;
 
-      const tracks = await getTopTracks(artist.spotifyArtistId);
-      topTracksByArtist.set(artist.spotifyArtistId, tracks);
+      // Use canonical name (from Spotify) for better search accuracy
+      const searchName = artist.canonicalName || artist.inputName;
+      const tracks = await getArtistTracks(searchName);
+      // Filter to tracks that actually feature this artist
+      const filtered = tracks.filter((t) =>
+        t.artists.some((a) => a.id === artist.spotifyArtistId),
+      );
+      topTracksByArtist.set(artist.spotifyArtistId, filtered.length > 0 ? filtered : tracks);
       spotifyCalls++;
 
       await new Promise((r) => setTimeout(r, TOP_TRACKS_DELAY_MS));
@@ -151,9 +156,6 @@ export async function generatePlaylist(
     log.info({ trackCount: playlistTracks.length }, "playlist assembled");
 
     // ── 9. Create Spotify playlist ──────────────────────────────────────────
-    const user = await getCurrentUser();
-    spotifyCalls++;
-
     const dateStr = event.date_time
       ? new Date(event.date_time).toLocaleDateString("en-GB", {
           day: "numeric",
@@ -173,7 +175,6 @@ export async function generatePlaylist(
       .join(" · ");
 
     const playlist = await createPlaylist({
-      userId: user.id,
       name: playlistName,
       description: playlistDescription,
     });

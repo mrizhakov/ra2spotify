@@ -154,10 +154,24 @@ async function resolveOne(inputName: string): Promise<{
   // 3. Pick best match
   let bestScore = 0;
   let bestCandidate: SpotifyArtist | null = null;
+
+  logger.info(
+    { inputName, candidateCount: candidates.length, names: candidates.map(c => c.name) },
+    "search candidates",
+  );
+
   for (const c of candidates) {
     const score = matchScore(inputName, c);
     // Weight by popularity to break ties between obscure and popular artists
-    const weighted = score * 0.8 + (c.popularity / 100) * 0.2;
+    // popularity can be undefined in search results — default to 0
+    const pop = c.popularity ?? 0;
+    const weighted = score * 0.8 + (pop / 100) * 0.2;
+
+    logger.debug(
+      { inputName, candidate: c.name, rawScore: score.toFixed(3), weighted: weighted.toFixed(3), popularity: pop },
+      "candidate score",
+    );
+
     if (weighted > bestScore) {
       bestScore = weighted;
       bestCandidate = c;
@@ -165,16 +179,19 @@ async function resolveOne(inputName: string): Promise<{
   }
 
   if (!bestCandidate || bestScore < MATCH_THRESHOLD) {
-    logger.info({ inputName, bestScore }, "no confident match");
+    logger.info({ inputName, bestScore: bestScore.toFixed(3), bestName: bestCandidate?.name }, "no confident match");
     return { spotifyArtistId: null, canonicalName: null, confidence: bestScore, followers: 0, popularity: 0 };
   }
+
+  const followers = bestCandidate.followers?.total ?? 0;
+  const popularity = bestCandidate.popularity ?? 0;
 
   const result = {
     spotifyArtistId: bestCandidate.id,
     canonicalName: bestCandidate.name,
     confidence: bestScore,
-    followers: bestCandidate.followers.total,
-    popularity: bestCandidate.popularity,
+    followers,
+    popularity,
   };
 
   // 4. Cache for future use
@@ -183,8 +200,8 @@ async function resolveOne(inputName: string): Promise<{
     spotify_artist_id: bestCandidate.id,
     canonical_name: bestCandidate.name,
     confidence: bestScore,
-    followers: bestCandidate.followers.total,
-    popularity: bestCandidate.popularity,
+    followers,
+    popularity,
   });
 
   logger.debug(

@@ -134,8 +134,11 @@ type SearchResponse = {
   };
 };
 
-type TopTracksResponse = {
-  tracks: SpotifyTrack[];
+type TrackSearchResponse = {
+  tracks: {
+    items: SpotifyTrack[];
+    total: number;
+  };
 };
 
 type PlaylistResponse = {
@@ -164,22 +167,26 @@ export async function searchArtist(name: string): Promise<SpotifyArtist[]> {
 }
 
 /**
- * Get an artist's top tracks for a given market.
+ * Get tracks by an artist using search (replaces top-tracks which is restricted
+ * in Spotify Development Mode since Feb 2026).
+ * Uses `artist:"name"` query to find tracks by the artist, sorted by relevance.
  */
-export async function getTopTracks(
-  artistId: string,
+export async function getArtistTracks(
+  artistName: string,
   market = "DE",
+  limit = 10,
 ): Promise<SpotifyTrack[]> {
-  const data = await spotifyFetch<TopTracksResponse>(
-    `/artists/${artistId}/top-tracks?market=${market}`,
+  const q = encodeURIComponent(`artist:"${artistName}"`);
+  const data = await spotifyFetch<TrackSearchResponse>(
+    `/search?q=${q}&type=track&limit=${limit}&market=${market}`,
     {},
-    `top-tracks/${artistId}`,
+    `search-tracks/${artistName}`,
   );
-  return data.tracks ?? [];
+  return data.tracks?.items ?? [];
 }
 
 /**
- * Get the current user's Spotify profile (used to get user_id for playlist creation).
+ * Get the current user's Spotify profile.
  */
 export async function getCurrentUser(): Promise<MeResponse> {
   return spotifyFetch<MeResponse>("/me", {}, "me");
@@ -187,14 +194,14 @@ export async function getCurrentUser(): Promise<MeResponse> {
 
 /**
  * Create a public playlist under the authenticated user.
+ * Uses /me/playlists (Feb 2026 API migration).
  */
 export async function createPlaylist(params: {
-  userId: string;
   name: string;
   description: string;
 }): Promise<PlaylistResponse> {
   return spotifyFetch<PlaylistResponse>(
-    `/users/${params.userId}/playlists`,
+    `/me/playlists`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -209,6 +216,7 @@ export async function createPlaylist(params: {
 
 /**
  * Add tracks to a playlist. Handles batching (max 100 per request).
+ * Uses /items endpoint (Feb 2026 API migration from /tracks).
  */
 export async function addTracksToPlaylist(
   playlistId: string,
@@ -218,12 +226,12 @@ export async function addTracksToPlaylist(
   for (let i = 0; i < trackUris.length; i += BATCH_SIZE) {
     const batch = trackUris.slice(i, i + BATCH_SIZE);
     await spotifyFetch(
-      `/playlists/${playlistId}/tracks`,
+      `/playlists/${playlistId}/items`,
       {
         method: "POST",
         body: JSON.stringify({ uris: batch }),
       },
-      `add-tracks/${playlistId}/batch${Math.floor(i / BATCH_SIZE)}`,
+      `add-items/${playlistId}/batch${Math.floor(i / BATCH_SIZE)}`,
     );
   }
 }
