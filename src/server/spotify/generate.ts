@@ -68,7 +68,7 @@ export async function generatePlaylist(
 
   // ── 3. Set status = processing ──────────────────────────────────────────────
   const runId = crypto.randomUUID();
-  const { error: lockErr } = await supabase
+  const { data: updatedEvent, error: lockErr } = await supabase
     .from("events")
     .update({
       status: "processing",
@@ -76,11 +76,14 @@ export async function generatePlaylist(
       generation_started_at: new Date().toISOString(),
     })
     .eq("id", eventId)
-    .in("status", ["unprocessed", "failed"]); // only if not already processing
+    .in("status", ["unprocessed", "failed"]) // only if not already processing
+    .select()
+    .maybeSingle();
 
-  if (lockErr) {
-    log.warn({ error: lockErr }, "failed to acquire processing lock");
-    return { status: "failed", error: "Could not start generation (concurrent?)" };
+  if (lockErr || !updatedEvent) {
+    if (lockErr) log.warn({ error: lockErr }, "failed to acquire processing lock");
+    else log.info("event is already processing or ready");
+    return { status: "failed", error: "Could not start generation (event is already being processed)" };
   }
 
   // Create generation_runs row
