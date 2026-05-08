@@ -265,7 +265,7 @@ function EventCard({
                 window.open(playlistUrl, "_blank", "noopener,noreferrer");
               }}
             >
-              Open
+              Listen
             </a>
           ) : (
             <button
@@ -284,18 +284,18 @@ function EventCard({
                     ? playlistState.message
                     : playlistState.phase === "error"
                       ? playlistState.message
-                      : "Generate Spotify playlist"
+                      : "Generate a Spotify playlist from the lineup"
               }
             >
               {playlistState.phase === "generating" ? (
                 <span className="inline-flex items-center gap-1">
                   <span className="w-3 h-3 border-2 border-text-tertiary/40 border-t-text-tertiary rounded-full animate-spin" />
-                  Generating
+                  Generating…
                 </span>
               ) : playlistState.phase === "error" ? (
                 "Retry"
               ) : (
-                "Generate"
+                "Generate playlist"
               )}
             </button>
           )}
@@ -317,7 +317,9 @@ export function EventsPageClient() {
     to: string;
   } | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>("interested");
-  const [playlistStates, setPlaylistStates] = useState<Record<string, PlaylistState>>({});
+  const [playlistStates, setPlaylistStates] = useState<
+    Record<string, PlaylistState>
+  >({});
 
   // Fetch events
   useEffect(() => {
@@ -335,7 +337,10 @@ export function EventsPageClient() {
         const nextStates: Record<string, PlaylistState> = {};
         for (const ev of loaded) {
           if (ev.spotify_playlist_url) {
-            nextStates[ev.id] = { phase: "ready", url: ev.spotify_playlist_url };
+            nextStates[ev.id] = {
+              phase: "ready",
+              url: ev.spotify_playlist_url,
+            };
           }
         }
         setPlaylistStates(nextStates);
@@ -471,6 +476,11 @@ export function EventsPageClient() {
             </h1>
             <span className="text-xs text-text-tertiary font-mono">Berlin</span>
           </div>
+
+          <p className="text-xs text-text-tertiary mb-3">
+            Tap <span className="text-text-secondary">Generate playlist</span> to create a
+            Spotify playlist from the lineup, then <span className="text-text-secondary">Listen</span>.
+          </p>
 
           {/* Weekend shortcuts */}
           <div className="flex gap-2 mb-3">

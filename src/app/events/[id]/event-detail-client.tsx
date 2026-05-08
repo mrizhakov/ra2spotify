@@ -112,7 +112,7 @@ function PlaylistCTA({
         className="flex items-center justify-center gap-2 w-full py-4 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold rounded-2xl transition-all duration-300 text-base shadow-lg shadow-[#1DB954]/20 hover:shadow-[#1DB954]/40"
       >
         <SpotifyIcon className="w-5 h-5" />
-        Open in Spotify
+        Listen on Spotify
       </a>
     );
   }
@@ -166,7 +166,7 @@ function PlaylistCTA({
     >
       <span className="flex items-center justify-center gap-2">
         <SpotifyIcon className="w-5 h-5" />
-        Generate vibe playlist
+        Generate Spotify playlist
       </span>
       {!hasArtists && (
         <span className="block text-xs mt-1 font-normal opacity-60">
