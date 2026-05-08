@@ -242,7 +242,7 @@ export function EventsPageClient() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/events");
+        const res = await fetch("/api/events?limit=500");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         setEvents(json.events ?? []);
