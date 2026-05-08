@@ -158,7 +158,7 @@ function CalendarStrip({
 
 // ─── Event card ───────────────────────────────────────────────────────────────
 
-function EventCard({ event }: { event: EventItem }) {
+function EventCard({ event, showDate }: { event: EventItem; showDate?: boolean }) {
   const artists = Array.isArray(event.lineup_json)
     ? event.lineup_json
     : [];
@@ -173,6 +173,7 @@ function EventCard({ event }: { event: EventItem }) {
         <div className="flex-1 min-w-0">
           {/* Time */}
           <span className="text-xs font-mono text-accent tracking-wide">
+            {showDate && event.date_time ? `${new Date(event.date_time).toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })} · ` : ""}
             {formatTime(event.date_time)}
           </span>
 
@@ -225,6 +226,7 @@ export function EventsPageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [weekendRange, setWeekendRange] = useState<{ from: string; to: string } | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>("interested");
 
   // Fetch events
@@ -260,11 +262,14 @@ export function EventsPageClient() {
     return sortedKeys.map((k) => ({ date: k, events: map.get(k)! }));
   }, [events]);
 
-  // Filter if a date is selected
+  // Filter if a date or weekend is selected
   const filteredEvents = useMemo(() => {
+    if (weekendRange) {
+      return events.filter((ev) => ev.date_time && ev.date_time.slice(0, 10) >= weekendRange.from && ev.date_time.slice(0, 10) <= weekendRange.to);
+    }
     if (!selectedDate) return events;
     return events.filter((ev) => ev.date_time && ev.date_time.slice(0, 10) === selectedDate);
-  }, [events, selectedDate]);
+  }, [events, selectedDate, weekendRange]);
 
   // Apply sorting and grouping based on sortOption
   const displayContent = useMemo(() => {
@@ -303,21 +308,21 @@ export function EventsPageClient() {
       const [fri, sun] = getWeekendDates(offset);
       const friKey = toDateKey(fri);
       const sunKey = toDateKey(sun);
-        // Find first day in range
-        const match = grouped.find(
-          (g) => g.date >= friKey && g.date <= sunKey,
-        );
+      
+      setSelectedDate(null);
+      setWeekendRange({ from: friKey, to: sunKey });
+      setSortOption("date"); // Ensure we are grouped by date to scroll
+      
+      setTimeout(() => {
+        const match = grouped.find((g) => g.date >= friKey && g.date <= sunKey);
         if (match) {
-          setSelectedDate(null); // Show all weekend days
-          setSortOption("date"); // Ensure we are grouped by date to scroll
-          setTimeout(() => {
-            const el = document.getElementById(`day-${match.date}`);
-            el?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }, 50);
+          const el = document.getElementById(`day-${match.date}`);
+          el?.scrollIntoView({ behavior: "smooth", block: "start" });
         }
-      },
-      [grouped],
-    );
+      }, 50);
+    },
+    [grouped],
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -347,10 +352,13 @@ export function EventsPageClient() {
             >
               Next weekend
             </button>
-            {selectedDate && (
+            {(selectedDate || weekendRange) && (
               <button
                 id="btn-clear-filter"
-                onClick={() => setSelectedDate(null)}
+                onClick={() => {
+                  setSelectedDate(null);
+                  setWeekendRange(null);
+                }}
                 className="px-3 py-1.5 text-xs font-medium bg-accent/10 rounded-lg text-accent hover:bg-accent/20 transition-colors ml-auto"
               >
                 Clear filter ✕
@@ -371,7 +379,10 @@ export function EventsPageClient() {
           {/* Calendar strip */}
           <CalendarStrip
             selectedDate={selectedDate}
-            onSelect={setSelectedDate}
+            onSelect={(date) => {
+              setWeekendRange(null);
+              setSelectedDate(date);
+            }}
           />
         </div>
       </header>
@@ -431,10 +442,11 @@ export function EventsPageClient() {
               <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-widest">
                 {sortOption === "interested" ? "Most Interested Events" : "Events by Price"}
                 {selectedDate && ` on ${formatDayLabel(selectedDate)}`}
+                {weekendRange && ` for the weekend`}
               </h2>
             </div>
             {displayContent.events.map((ev) => (
-              <EventCard key={ev.id} event={ev} />
+              <EventCard key={ev.id} event={ev} showDate={true} />
             ))}
           </div>
         )}
