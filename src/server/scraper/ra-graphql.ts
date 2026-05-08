@@ -235,29 +235,58 @@ export async function fetchEventDetail(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Derive a display price string from ticket data or the cost field. */
 export function extractPrice(
   detail: Pick<RaEventDetail, "tickets" | "cost">,
 ): string | null {
   // Prefer structured ticket data
   if (detail.tickets?.length) {
-    const priced = detail.tickets
-      .filter((t) => t.priceRetail != null)
+    const validTickets = detail.tickets
       .map((t) => ({
-        amount: parseFloat(t.priceRetail!),
+        title: t.title,
+        amount: t.priceRetail ? parseFloat(t.priceRetail) : null,
         currency: t.currency?.code ?? "EUR",
       }))
-      .filter((p) => !isNaN(p.amount));
+      .filter((t) => t.amount !== null && !isNaN(t.amount));
 
-    if (priced.length) {
-      const min = Math.min(...priced.map((p) => p.amount));
-      const currency = priced[0].currency;
-      return `${currency} ${min.toFixed(2)}`;
+    const freeOptions = validTickets.filter((t) => t.amount === 0);
+    const paidOptions = validTickets.filter((t) => t.amount! > 0);
+
+    let priceStr = "";
+
+    // Handle free options with qualifiers
+    if (freeOptions.length > 0) {
+      // Look for a title with a qualifier like "(Before 21:00)"
+      const freeTicket = freeOptions[0];
+      const title = freeTicket.title || "";
+      const match = title.match(/\(([^)]+)\)/); // Extract text in parentheses
+      const qualifier = match ? match[1] : "";
+      
+      priceStr = qualifier ? `Free (${qualifier})` : "Free";
     }
+
+    // Handle lowest paid price
+    if (paidOptions.length > 0) {
+      const minPaid = Math.min(...paidOptions.map((t) => t.amount!));
+      const currency = paidOptions[0].currency;
+      const formattedPaid = `${currency} ${minPaid.toFixed(2)}`;
+      
+      if (priceStr) {
+        priceStr += ` / ${formattedPaid}`;
+      } else {
+        priceStr = formattedPaid;
+      }
+    }
+
+    if (priceStr) return priceStr;
   }
 
-  // Fallback to cost field (StrippedHtml scalar, e.g. "€10")
-  if (detail.cost) return detail.cost;
+  // Fallback to cost field (StrippedHtml scalar, e.g. "€10" or "22")
+  if (detail.cost) {
+    const costStr = detail.cost.trim();
+    if (costStr.toLowerCase().includes("free")) return "Free";
+    // If it's just a raw number like "22", prefix it or leave it as requested by user's parser
+    return costStr;
+  }
 
   return null;
 }
