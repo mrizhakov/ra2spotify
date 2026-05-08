@@ -13,6 +13,7 @@ type EventItem = {
   location: string | null;
   interested_count: number | null;
   lineup_json: string[] | null;
+  price: string | null;
   status: string;
   spotify_playlist_url: string | null;
 };
@@ -78,6 +79,29 @@ function getWeekendDates(offset: 0 | 1): [Date, Date] {
   const fri = addDays(now, daysUntilFri);
   const sun = addDays(fri, 2);
   return [fri, sun];
+}
+
+// ─── Sorting & Formatting helpers ─────────────────────────────────────────────
+
+export type SortOption = "interested" | "price" | "date";
+
+export function parsePrice(priceStr: string | null): number {
+  if (!priceStr) return Infinity; // No clear price -> bottom
+  const lower = priceStr.toLowerCase();
+  if (lower.includes("free") || lower.includes("0.00") || lower.includes("0,00")) return 0;
+  
+  const match = priceStr.match(/[\d]+([.,]\d+)?/);
+  if (match) {
+    return parseFloat(match[0].replace(',', '.'));
+  }
+  return Infinity;
+}
+
+export function displayPrice(priceStr: string | null): string {
+  if (!priceStr) return "Entry fee: ?";
+  const lower = priceStr.toLowerCase();
+  if (lower.includes("free")) return "Entry fee: Free";
+  return `Entry fee: ${priceStr}`;
 }
 
 // ─── Calendar strip ───────────────────────────────────────────────────────────
@@ -173,8 +197,11 @@ function EventCard({ event }: { event: EventItem }) {
           )}
         </div>
 
-        {/* Right side: interested count + playlist indicator */}
-        <div className="flex flex-col items-end gap-1 shrink-0">
+        {/* Right side: interested count + price + playlist indicator */}
+        <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+          <span className="text-xs text-text-secondary font-medium">
+            {displayPrice(event.price)}
+          </span>
           {event.interested_count != null && event.interested_count > 0 && (
             <span className="text-xs text-text-tertiary">
               ♥ {event.interested_count.toLocaleString()}
@@ -198,6 +225,7 @@ export function EventsPageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [sortOption, setSortOption] = useState<SortOption>("interested");
 
   // Fetch events
   useEffect(() => {
@@ -233,10 +261,41 @@ export function EventsPageClient() {
   }, [events]);
 
   // Filter if a date is selected
-  const displayGroups = useMemo(() => {
-    if (!selectedDate) return grouped;
-    return grouped.filter((g) => g.date === selectedDate);
-  }, [grouped, selectedDate]);
+  const filteredEvents = useMemo(() => {
+    if (!selectedDate) return events;
+    return events.filter((ev) => ev.date_time && ev.date_time.slice(0, 10) === selectedDate);
+  }, [events, selectedDate]);
+
+  // Apply sorting and grouping based on sortOption
+  const displayContent = useMemo(() => {
+    if (sortOption === "date") {
+      // Group by day
+      const map = new Map<string, EventItem[]>();
+      for (const ev of filteredEvents) {
+        if (!ev.date_time) continue;
+        const key = ev.date_time.slice(0, 10);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(ev);
+      }
+      const sortedKeys = Array.from(map.keys()).sort();
+      return {
+        type: "grouped" as const,
+        groups: sortedKeys.map((k) => ({ date: k, events: map.get(k)! })),
+      };
+    } else {
+      // Flat list sorted by selected criteria
+      const sorted = [...filteredEvents];
+      if (sortOption === "interested") {
+        sorted.sort((a, b) => (b.interested_count || 0) - (a.interested_count || 0));
+      } else if (sortOption === "price") {
+        sorted.sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+      }
+      return {
+        type: "flat" as const,
+        events: sorted,
+      };
+    }
+  }, [filteredEvents, sortOption]);
 
   // Weekend shortcuts
   const selectWeekend = useCallback(
@@ -244,21 +303,21 @@ export function EventsPageClient() {
       const [fri, sun] = getWeekendDates(offset);
       const friKey = toDateKey(fri);
       const sunKey = toDateKey(sun);
-      // Find first day in range
-      const match = grouped.find(
-        (g) => g.date >= friKey && g.date <= sunKey,
-      );
-      if (match) {
-        setSelectedDate(null); // Show all weekend days
-        // Scroll to the first weekend group
-        setTimeout(() => {
-          const el = document.getElementById(`day-${match.date}`);
-          el?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 50);
-      }
-    },
-    [grouped],
-  );
+        // Find first day in range
+        const match = grouped.find(
+          (g) => g.date >= friKey && g.date <= sunKey,
+        );
+        if (match) {
+          setSelectedDate(null); // Show all weekend days
+          setSortOption("date"); // Ensure we are grouped by date to scroll
+          setTimeout(() => {
+            const el = document.getElementById(`day-${match.date}`);
+            el?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 50);
+        }
+      },
+      [grouped],
+    );
 
   return (
     <div className="min-h-screen bg-background">
@@ -297,6 +356,16 @@ export function EventsPageClient() {
                 Clear filter ✕
               </button>
             )}
+
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as SortOption)}
+              className="ml-auto px-2 py-1.5 text-xs font-medium bg-surface rounded-lg text-text-secondary hover:bg-surface-elevated hover:text-text-primary transition-colors border border-border-subtle focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="interested">Sort: Interested</option>
+              <option value="price">Sort: Price</option>
+              <option value="date">Sort: Date</option>
+            </select>
           </div>
 
           {/* Calendar strip */}
@@ -323,7 +392,7 @@ export function EventsPageClient() {
           </div>
         )}
 
-        {!loading && !error && displayGroups.length === 0 && (
+        {!loading && !error && (displayContent.type === "grouped" ? displayContent.groups.length === 0 : displayContent.events.length === 0) && (
           <div className="text-center py-20" id="empty-state">
             <p className="text-4xl mb-3">🎧</p>
             <p className="text-text-secondary">No events found</p>
@@ -335,26 +404,40 @@ export function EventsPageClient() {
           </div>
         )}
 
-        {/* Day groups */}
-        {displayGroups.map((group) => (
-          <section key={group.date} id={`day-${group.date}`} className="mb-8">
-            <div className="sticky top-[160px] z-10 bg-background/90 backdrop-blur-sm py-2 mb-3">
-              <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-widest flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-accent inline-block" />
-                {formatDayLabel(group.date)}
-                <span className="text-text-tertiary font-normal normal-case ml-auto text-xs">
-                  {group.events.length} event{group.events.length !== 1 ? "s" : ""}
-                </span>
+        {/* Render Content */}
+        {displayContent.type === "grouped" ? (
+          displayContent.groups.map((group) => (
+            <section key={group.date} id={`day-${group.date}`} className="mb-8">
+              <div className="sticky top-[160px] z-10 bg-background/90 backdrop-blur-sm py-2 mb-3">
+                <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-accent inline-block" />
+                  {formatDayLabel(group.date)}
+                  <span className="text-text-tertiary font-normal normal-case ml-auto text-xs">
+                    {group.events.length} event{group.events.length !== 1 ? "s" : ""}
+                  </span>
+                </h2>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {group.events.map((ev) => (
+                  <EventCard key={ev.id} event={ev} />
+                ))}
+              </div>
+            </section>
+          ))
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="mb-2">
+              <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-widest">
+                {sortOption === "interested" ? "Most Interested Events" : "Events by Price"}
+                {selectedDate && ` on ${formatDayLabel(selectedDate)}`}
               </h2>
             </div>
-
-            <div className="flex flex-col gap-3">
-              {group.events.map((ev) => (
-                <EventCard key={ev.id} event={ev} />
-              ))}
-            </div>
-          </section>
-        ))}
+            {displayContent.events.map((ev) => (
+              <EventCard key={ev.id} event={ev} />
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );

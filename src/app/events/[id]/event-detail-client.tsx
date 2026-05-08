@@ -35,6 +35,13 @@ function formatDateTime(iso: string | null): string {
   }
 }
 
+function displayPrice(priceStr: string | null): string {
+  if (!priceStr) return "Entry fee: ?";
+  const lower = priceStr.toLowerCase();
+  if (lower.includes("free")) return "Entry fee: Free";
+  return `Entry fee: ${priceStr}`;
+}
+
 type PlaylistState =
   | { phase: "idle" }
   | { phase: "generating"; message: string }
@@ -274,11 +281,9 @@ export function EventDetailClient({ eventId }: { eventId: string }) {
           )}
 
           <div className="flex flex-wrap gap-3 mt-4">
-            {event.price && (
-              <span className="text-xs bg-surface px-3 py-1.5 rounded-lg border border-border-subtle text-text-secondary">
-                💰 {event.price}
-              </span>
-            )}
+            <span className="text-xs bg-surface px-3 py-1.5 rounded-lg border border-border-subtle text-text-secondary">
+              💰 {displayPrice(event.price)}
+            </span>
             {event.interested_count != null && event.interested_count > 0 && (
               <span className="text-xs bg-surface px-3 py-1.5 rounded-lg border border-border-subtle text-text-secondary">
                 ♥ {event.interested_count.toLocaleString()} interested
