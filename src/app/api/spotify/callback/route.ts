@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Exchange code for tokens
-  const redirectUri = `${req.nextUrl.origin}/api/spotify/callback`;
+  // Exchange code for tokens — must match exactly what's in Spotify Dashboard
+  const redirectUri = "http://127.0.0.1:3456/api/spotify/callback";
 
   const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",

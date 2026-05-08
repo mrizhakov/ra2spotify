@@ -47,7 +47,7 @@ To set up Spotify:
   process.exit(1);
 }
 
-const redirectUri = "http://localhost:3456/api/spotify/callback";
+const redirectUri = "http://127.0.0.1:3456/api/spotify/callback";
 
 const scopes = [
   "playlist-modify-public",
