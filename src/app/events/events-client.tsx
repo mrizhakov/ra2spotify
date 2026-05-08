@@ -66,7 +66,7 @@ function getWeekendDates(offset: 0 | 1): [Date, Date] {
   const now = new Date();
   const day = now.getDay(); // 0=Sun ... 6=Sat
   
-  let daysToFri = (5 - day + 7) % 7;
+  const daysToFri = (5 - day + 7) % 7;
   
   if (offset === 0 && (day === 6 || day === 0)) {
     const fri = addDays(now, day === 6 ? -1 : -2);
@@ -255,20 +255,6 @@ export function EventsPageClient() {
     load();
   }, []);
 
-  // Group events by day
-  const grouped = useMemo(() => {
-    const map = new Map<string, EventItem[]>();
-    for (const ev of events) {
-      if (!ev.date_time) continue;
-      const key = ev.date_time.slice(0, 10);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(ev);
-    }
-    // Sort days
-    const sortedKeys = Array.from(map.keys()).sort();
-    return sortedKeys.map((k) => ({ date: k, events: map.get(k)! }));
-  }, [events]);
-
   // Filter if a date or weekend is selected
   const filteredEvents = useMemo(() => {
     if (weekendRange) {
@@ -324,7 +310,7 @@ export function EventsPageClient() {
       setWeekendRange({ from: friKey, to: sunKey });
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [grouped],
+    [],
   );
 
   return (
