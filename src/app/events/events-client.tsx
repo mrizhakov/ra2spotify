@@ -18,6 +18,12 @@ type EventItem = {
   spotify_playlist_url: string | null;
 };
 
+type PlaylistState =
+  | { phase: "idle" }
+  | { phase: "generating"; message: string }
+  | { phase: "ready"; url: string }
+  | { phase: "error"; message: string };
+
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function toDateKey(d: Date): string {
@@ -65,15 +71,15 @@ function formatTime(iso: string | null): string {
 function getWeekendDates(offset: 0 | 1): [Date, Date] {
   const now = new Date();
   const day = now.getDay(); // 0=Sun ... 6=Sat
-  
+
   const daysToFri = (5 - day + 7) % 7;
-  
+
   if (offset === 0 && (day === 6 || day === 0)) {
     const fri = addDays(now, day === 6 ? -1 : -2);
     const sun = addDays(fri, 2);
     return [fri, sun];
   }
-  
+
   let fri = addDays(now, daysToFri);
   if (offset === 1) {
     if (day === 6 || day === 0) {
@@ -83,7 +89,7 @@ function getWeekendDates(offset: 0 | 1): [Date, Date] {
       fri = addDays(fri, 7);
     }
   }
-  
+
   const sun = addDays(fri, 2);
   return [fri, sun];
 }
@@ -95,11 +101,16 @@ export type SortOption = "interested" | "price" | "date";
 export function parsePrice(priceStr: string | null): number {
   if (!priceStr) return Infinity; // No clear price -> bottom
   const lower = priceStr.toLowerCase();
-  if (lower.includes("free") || lower.includes("0.00") || lower.includes("0,00")) return 0;
-  
+  if (
+    lower.includes("free") ||
+    lower.includes("0.00") ||
+    lower.includes("0,00")
+  )
+    return 0;
+
   const match = priceStr.match(/[\d]+([.,]\d+)?/);
   if (match) {
-    return parseFloat(match[0].replace(',', '.'));
+    return parseFloat(match[0].replace(",", "."));
   }
   return Infinity;
 }
@@ -130,7 +141,10 @@ function CalendarStrip({
   }, []);
 
   return (
-    <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-hide" id="calendar-strip">
+    <div
+      className="flex gap-1 overflow-x-auto pb-2 scrollbar-hide"
+      id="calendar-strip"
+    >
       {days.map((d) => {
         const key = toDateKey(d);
         const isSelected = selectedDate === key;
@@ -165,10 +179,24 @@ function CalendarStrip({
 
 // ─── Event card ───────────────────────────────────────────────────────────────
 
-function EventCard({ event, showDate }: { event: EventItem; showDate?: boolean }) {
-  const artists = Array.isArray(event.lineup_json)
-    ? event.lineup_json
-    : [];
+function EventCard({
+  event,
+  showDate,
+  playlistState,
+  onGeneratePlaylist,
+}: {
+  event: EventItem;
+  showDate?: boolean;
+  playlistState: PlaylistState;
+  onGeneratePlaylist: (eventId: string) => Promise<void>;
+}) {
+  const artists = Array.isArray(event.lineup_json) ? event.lineup_json : [];
+
+  const hasArtists = artists.length > 0;
+  const playlistUrl =
+    playlistState.phase === "ready"
+      ? playlistState.url
+      : event.spotify_playlist_url;
 
   return (
     <Link
@@ -180,7 +208,9 @@ function EventCard({ event, showDate }: { event: EventItem; showDate?: boolean }
         <div className="flex-1 min-w-0">
           {/* Time */}
           <span className="text-xs font-mono text-accent tracking-wide">
-            {showDate && event.date_time ? `${new Date(event.date_time).toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })} · ` : ""}
+            {showDate && event.date_time
+              ? `${new Date(event.date_time).toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })} · `
+              : ""}
             {formatTime(event.date_time)}
           </span>
 
@@ -215,10 +245,59 @@ function EventCard({ event, showDate }: { event: EventItem; showDate?: boolean }
               ♥ {event.interested_count.toLocaleString()}
             </span>
           )}
-          {event.spotify_playlist_url && (
+          {playlistUrl && (
             <span className="text-[10px] bg-green-900/40 text-green-400 px-2 py-0.5 rounded-full">
               🎧 playlist
             </span>
+          )}
+
+          {/* Playlist CTA */}
+          {playlistUrl ? (
+            <a
+              href={playlistUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 text-xs px-2 py-1 rounded-lg bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 transition-colors"
+              onClick={(e) => {
+                // Prevent navigating into the event page when clicking the CTA.
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(playlistUrl, "_blank", "noopener,noreferrer");
+              }}
+            >
+              Open
+            </a>
+          ) : (
+            <button
+              type="button"
+              disabled={!hasArtists || playlistState.phase === "generating"}
+              className="mt-1 text-xs px-2 py-1 rounded-lg bg-surface-elevated text-text-secondary border border-border-subtle hover:border-accent/30 hover:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await onGeneratePlaylist(event.id);
+              }}
+              title={
+                !hasArtists
+                  ? "No artists in lineup"
+                  : playlistState.phase === "generating"
+                    ? playlistState.message
+                    : playlistState.phase === "error"
+                      ? playlistState.message
+                      : "Generate Spotify playlist"
+              }
+            >
+              {playlistState.phase === "generating" ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-3 h-3 border-2 border-text-tertiary/40 border-t-text-tertiary rounded-full animate-spin" />
+                  Generating
+                </span>
+              ) : playlistState.phase === "error" ? (
+                "Retry"
+              ) : (
+                "Generate"
+              )}
+            </button>
           )}
         </div>
       </div>
@@ -233,8 +312,12 @@ export function EventsPageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [weekendRange, setWeekendRange] = useState<{ from: string; to: string } | null>(null);
+  const [weekendRange, setWeekendRange] = useState<{
+    from: string;
+    to: string;
+  } | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>("interested");
+  const [playlistStates, setPlaylistStates] = useState<Record<string, PlaylistState>>({});
 
   // Fetch events
   useEffect(() => {
@@ -245,7 +328,17 @@ export function EventsPageClient() {
         const res = await fetch("/api/events?limit=500");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        setEvents(json.events ?? []);
+        const loaded = (json.events ?? []) as EventItem[];
+        setEvents(loaded);
+
+        // Seed playlist state for events that already have a playlist.
+        const nextStates: Record<string, PlaylistState> = {};
+        for (const ev of loaded) {
+          if (ev.spotify_playlist_url) {
+            nextStates[ev.id] = { phase: "ready", url: ev.spotify_playlist_url };
+          }
+        }
+        setPlaylistStates(nextStates);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load events");
       } finally {
@@ -255,13 +348,68 @@ export function EventsPageClient() {
     load();
   }, []);
 
+  const generatePlaylistForEvent = useCallback(async (eventId: string) => {
+    setPlaylistStates((prev) => ({
+      ...prev,
+      [eventId]: { phase: "generating", message: "Generating playlist…" },
+    }));
+
+    try {
+      const res = await fetch("/api/events/generate-playlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId }),
+      });
+
+      const json = (await res.json()) as {
+        status?: string;
+        error?: string;
+        playlistUrl?: string;
+      };
+
+      if (!res.ok || json.status === "failed" || !json.playlistUrl) {
+        const message = json.error || `HTTP ${res.status}`;
+        setPlaylistStates((prev) => ({
+          ...prev,
+          [eventId]: { phase: "error", message },
+        }));
+        return;
+      }
+
+      setPlaylistStates((prev) => ({
+        ...prev,
+        [eventId]: { phase: "ready", url: json.playlistUrl! },
+      }));
+      setEvents((prev) =>
+        prev.map((ev) =>
+          ev.id === eventId
+            ? { ...ev, spotify_playlist_url: json.playlistUrl! }
+            : ev,
+        ),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Network error";
+      setPlaylistStates((prev) => ({
+        ...prev,
+        [eventId]: { phase: "error", message },
+      }));
+    }
+  }, []);
+
   // Filter if a date or weekend is selected
   const filteredEvents = useMemo(() => {
     if (weekendRange) {
-      return events.filter((ev) => ev.date_time && ev.date_time.slice(0, 10) >= weekendRange.from && ev.date_time.slice(0, 10) <= weekendRange.to);
+      return events.filter(
+        (ev) =>
+          ev.date_time &&
+          ev.date_time.slice(0, 10) >= weekendRange.from &&
+          ev.date_time.slice(0, 10) <= weekendRange.to,
+      );
     }
     if (!selectedDate) return events;
-    return events.filter((ev) => ev.date_time && ev.date_time.slice(0, 10) === selectedDate);
+    return events.filter(
+      (ev) => ev.date_time && ev.date_time.slice(0, 10) === selectedDate,
+    );
   }, [events, selectedDate, weekendRange]);
 
   // Apply sorting and grouping based on sortOption
@@ -284,7 +432,9 @@ export function EventsPageClient() {
       // Flat list sorted by selected criteria
       const sorted = [...filteredEvents];
       if (sortOption === "interested") {
-        sorted.sort((a, b) => (b.interested_count || 0) - (a.interested_count || 0));
+        sorted.sort(
+          (a, b) => (b.interested_count || 0) - (a.interested_count || 0),
+        );
       } else if (sortOption === "price") {
         sorted.sort((a, b) => {
           const priceDiff = parsePrice(a.price) - parsePrice(b.price);
@@ -300,18 +450,15 @@ export function EventsPageClient() {
   }, [filteredEvents, sortOption]);
 
   // Weekend shortcuts
-  const selectWeekend = useCallback(
-    (offset: 0 | 1) => {
-      const [fri, sun] = getWeekendDates(offset);
-      const friKey = toDateKey(fri);
-      const sunKey = toDateKey(sun);
-      
-      setSelectedDate(null);
-      setWeekendRange({ from: friKey, to: sunKey });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    },
-    [],
-  );
+  const selectWeekend = useCallback((offset: 0 | 1) => {
+    const [fri, sun] = getWeekendDates(offset);
+    const friKey = toDateKey(fri);
+    const sunKey = toDateKey(sun);
+
+    setSelectedDate(null);
+    setWeekendRange({ from: friKey, to: sunKey });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -385,23 +532,30 @@ export function EventsPageClient() {
         )}
 
         {error && (
-          <div className="bg-danger/10 border border-danger/30 text-danger rounded-xl p-4 text-sm" id="error-message">
+          <div
+            className="bg-danger/10 border border-danger/30 text-danger rounded-xl p-4 text-sm"
+            id="error-message"
+          >
             <p className="font-semibold">Failed to load events</p>
             <p className="mt-1 opacity-80">{error}</p>
           </div>
         )}
 
-        {!loading && !error && (displayContent.type === "grouped" ? displayContent.groups.length === 0 : displayContent.events.length === 0) && (
-          <div className="text-center py-20" id="empty-state">
-            <p className="text-4xl mb-3">🎧</p>
-            <p className="text-text-secondary">No events found</p>
-            <p className="text-xs text-text-tertiary mt-1">
-              {selectedDate
-                ? "Try selecting a different date"
-                : "Check back later or run the scraper"}
-            </p>
-          </div>
-        )}
+        {!loading &&
+          !error &&
+          (displayContent.type === "grouped"
+            ? displayContent.groups.length === 0
+            : displayContent.events.length === 0) && (
+            <div className="text-center py-20" id="empty-state">
+              <p className="text-4xl mb-3">🎧</p>
+              <p className="text-text-secondary">No events found</p>
+              <p className="text-xs text-text-tertiary mt-1">
+                {selectedDate
+                  ? "Try selecting a different date"
+                  : "Check back later or run the scraper"}
+              </p>
+            </div>
+          )}
 
         {/* Render Content */}
         {displayContent.type === "grouped" ? (
@@ -412,14 +566,21 @@ export function EventsPageClient() {
                   <span className="w-2 h-2 rounded-full bg-accent inline-block" />
                   {formatDayLabel(group.date)}
                   <span className="text-text-tertiary font-normal normal-case ml-auto text-xs">
-                    {group.events.length} event{group.events.length !== 1 ? "s" : ""}
+                    {group.events.length} event
+                    {group.events.length !== 1 ? "s" : ""}
                   </span>
                 </h2>
               </div>
 
               <div className="flex flex-col gap-3">
                 {group.events.map((ev) => (
-                  <EventCard key={ev.id} event={ev} showDate={!!weekendRange} />
+                  <EventCard
+                    key={ev.id}
+                    event={ev}
+                    showDate={!!weekendRange}
+                    playlistState={playlistStates[ev.id] ?? { phase: "idle" }}
+                    onGeneratePlaylist={generatePlaylistForEvent}
+                  />
                 ))}
               </div>
             </section>
@@ -428,13 +589,21 @@ export function EventsPageClient() {
           <div className="flex flex-col gap-3">
             <div className="mb-2">
               <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-widest">
-                {sortOption === "interested" ? "Most Interested Events" : "Events by Price"}
+                {sortOption === "interested"
+                  ? "Most Interested Events"
+                  : "Events by Price"}
                 {selectedDate && ` on ${formatDayLabel(selectedDate)}`}
                 {weekendRange && ` for the weekend`}
               </h2>
             </div>
             {displayContent.events.map((ev) => (
-              <EventCard key={ev.id} event={ev} showDate={true} />
+              <EventCard
+                key={ev.id}
+                event={ev}
+                showDate={true}
+                playlistState={playlistStates[ev.id] ?? { phase: "idle" }}
+                onGeneratePlaylist={generatePlaylistForEvent}
+              />
             ))}
           </div>
         )}
