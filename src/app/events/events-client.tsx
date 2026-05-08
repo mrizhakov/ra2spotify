@@ -65,18 +65,25 @@ function formatTime(iso: string | null): string {
 function getWeekendDates(offset: 0 | 1): [Date, Date] {
   const now = new Date();
   const day = now.getDay(); // 0=Sun ... 6=Sat
-  // Days until next Friday: (5 - day + 7) % 7
-  let daysUntilFri = (5 - day + 7) % 7;
-  if (daysUntilFri === 0 && offset === 1) daysUntilFri = 7;
-  if (offset === 1) daysUntilFri += 7;
-  // If today is Sat/Sun, "this weekend" is this Sat/Sun
+  
+  let daysToFri = (5 - day + 7) % 7;
+  
   if (offset === 0 && (day === 6 || day === 0)) {
-    // Already on weekend — show today + tomorrow
-    const fri = day === 6 ? now : addDays(now, -1);
+    const fri = addDays(now, day === 6 ? -1 : -2);
     const sun = addDays(fri, 2);
     return [fri, sun];
   }
-  const fri = addDays(now, daysUntilFri);
+  
+  let fri = addDays(now, daysToFri);
+  if (offset === 1) {
+    if (day === 6 || day === 0) {
+      // daysToFri already points to next Friday
+    } else {
+      // Point to Friday after next
+      fri = addDays(fri, 7);
+    }
+  }
+  
   const sun = addDays(fri, 2);
   return [fri, sun];
 }
@@ -426,7 +433,7 @@ export function EventsPageClient() {
 
               <div className="flex flex-col gap-3">
                 {group.events.map((ev) => (
-                  <EventCard key={ev.id} event={ev} />
+                  <EventCard key={ev.id} event={ev} showDate={!!weekendRange} />
                 ))}
               </div>
             </section>
