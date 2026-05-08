@@ -293,7 +293,11 @@ export function EventsPageClient() {
       if (sortOption === "interested") {
         sorted.sort((a, b) => (b.interested_count || 0) - (a.interested_count || 0));
       } else if (sortOption === "price") {
-        sorted.sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+        sorted.sort((a, b) => {
+          const priceDiff = parsePrice(a.price) - parsePrice(b.price);
+          if (priceDiff !== 0) return priceDiff;
+          return (b.interested_count || 0) - (a.interested_count || 0);
+        });
       }
       return {
         type: "flat" as const,
